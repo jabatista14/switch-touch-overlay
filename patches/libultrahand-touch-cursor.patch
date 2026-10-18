@@ -14,7 +14,7 @@ diff --git a/libtesla/include/tesla.hpp b/libtesla/include/tesla.hpp
 +
              if (!ult::internalTouchReleased.load(std::memory_order_acquire) || ult::launchingOverlay.load(std::memory_order_acquire))
                  return;
-@@ -15022,7 +15029,11 @@
+@@ -15022,7 +15029,12 @@
                          if (shData->overlayOpen) {
                              if (!disableHiding) {
                          #if IS_STATUS_MONITOR_DIRECTIVE
@@ -22,6 +22,7 @@ diff --git a/libtesla/include/tesla.hpp b/libtesla/include/tesla.hpp
                          #endif
 -                                    tsl::Overlay::get()->hide();
 +                                    if (tsl::Overlay::get()->exitOnLaunchCombo()) {
++                                        tsl::setNextOverlay(returnOverlayPath);
 +                                        tsl::Overlay::get()->close(true);
 +                                    } else {
 +                                        tsl::Overlay::get()->hide();

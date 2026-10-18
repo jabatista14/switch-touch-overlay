@@ -121,12 +121,14 @@ public:
         if ((pressed & kTeslaMenuCombo) == kTeslaMenuCombo &&
             (keysDown & kTeslaMenuCombo) != 0) {
             releaseTouch();
+            tsl::setNextOverlay(returnOverlayPath);
             tsl::Overlay::get()->close(true);
             return true;
         }
 
         if (keysDown & HidNpadButton_B) {
             releaseTouch();
+            tsl::setNextOverlay(returnOverlayPath);
             tsl::Overlay::get()->close(true);
             return true;
         }
