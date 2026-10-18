@@ -297,7 +297,7 @@ public:
         // after libultrahand claims focus, and cancel its reassertion burst.
         // Controller buttons will consequently also reach the title while
         // Touch Cursor is open; no global button mapping is modified.
-        hlp::requestForeground(false);
+        tsl::hlp::requestForeground(false);
     }
 
     void initServices() override {
