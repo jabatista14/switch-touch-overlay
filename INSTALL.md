@@ -27,6 +27,7 @@ No Ultrahand configuration or global keybind file is installed or changed.
 | ZR | Touch/hold while dragging |
 | X | Recenter cursor |
 | B | Release touch, disable, and close |
+| L + D-pad Down + Right Stick click | Release touch and return to Ultrahand |
 
 The cursor is cyan while hovering and orange while a virtual finger is down.
 A red crossed circle means the Switch rejected access to `hid:dbg`; press B to
@@ -35,6 +36,8 @@ close safely.
 ## Disable or uninstall
 
 - Press **B** at any time to send finger-up and close the overlay.
+- Your normal Tesla combo (`L + Down + Right Stick click`) also sends finger-up
+  and exits. The overlay reads the buttons but never rewrites the saved combo.
 - To uninstall, delete only `sd:/switch/.overlays/touch_cursor.ovl` and reboot.
 - If replacing an older build, overwrite that one file. No saved settings need
   to be removed.

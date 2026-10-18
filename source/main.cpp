@@ -3,44 +3,58 @@
 #include <tesla.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <limits>
+#include <mutex>
 
 namespace {
 
 constexpr u32 kTouchWidth = 1280;
 constexpr u32 kTouchHeight = 720;
-constexpr u16 kCursorFramebufferSize = 96;
+constexpr u16 kCursorFramebufferWidth = 960;
+constexpr u16 kCursorFramebufferHeight = 540;
 constexpr float kCompositorScale = 1.5F;
+constexpr float kLayerPanMarginX = 96.0F;
+constexpr float kLayerPanMarginY = 72.0F;
 constexpr float kDeadzone = 0.16F;
 constexpr float kPixelsPerFrame = 13.0F;
 constexpr u32 kFingerDiameter = 24;
+constexpr u64 kTeslaMenuCombo = KEY_L | KEY_DDOWN | KEY_RSTICK;
 
-bool g_hiddbgReady = false;
+std::mutex g_touchPilotMutex;
+bool g_hiddbgInitialized = false;
+bool g_touchPilotActive = false;
+std::atomic<bool> g_touchInjectionAvailable{false};
 
 void releaseTouchPilot() {
-    if (!g_hiddbgReady) {
+    std::scoped_lock lock(g_touchPilotMutex);
+    if (!g_hiddbgInitialized) {
         return;
     }
 
-    // Keep the empty state active for one HID polling interval so the target
-    // observes finger-up before AutoPilot is removed.
-    hiddbgSetTouchScreenAutoPilotState(nullptr, 0);
-    svcSleepThread(17'000'000ULL);
+    if (g_touchPilotActive) {
+        // Keep the empty state active for one HID polling interval so the
+        // target observes finger-up before AutoPilot is removed.
+        hiddbgSetTouchScreenAutoPilotState(nullptr, 0);
+        svcSleepThread(17'000'000ULL);
+    }
     hiddbgUnsetTouchScreenAutoPilotState();
+    g_touchPilotActive = false;
 }
 
 class CursorElement final : public tsl::elm::Element {
 public:
-    float cursorX = kTouchWidth / 2.0F;
-    float cursorY = kTouchHeight / 2.0F;
-    bool touching = false;
+    std::atomic<float> cursorX{kTouchWidth / 2.0F};
+    std::atomic<float> cursorY{kTouchHeight / 2.0F};
+    std::atomic<bool> touching{false};
 
     void draw(tsl::gfx::Renderer* renderer) override {
         const s32 centerX = static_cast<s32>(localCursorX());
         const s32 centerY = static_cast<s32>(localCursorY());
+        const bool isTouching = touching.load(std::memory_order_acquire);
 
-        if (!g_hiddbgReady) {
+        if (!g_touchInjectionAvailable.load(std::memory_order_acquire)) {
             const auto red = renderer->a(tsl::Color{0xF, 0x2, 0x2, 0xF});
             renderer->drawCircle(centerX, centerY, 15, false, red);
             renderer->drawRect(centerX - 13, centerY - 2, 26, 4, red);
@@ -48,18 +62,18 @@ public:
         }
 
         const auto outline = renderer->a(tsl::Color{0x0, 0x0, 0x0, 0xF});
-        const auto fill = renderer->a(touching
+        const auto fill = renderer->a(isTouching
             ? tsl::Color{0xF, 0x5, 0x2, 0xF}
             : tsl::Color{0x2, 0xD, 0xF, 0xF});
         const auto center = renderer->a(tsl::Color{0xF, 0xF, 0xF, 0xF});
 
-        renderer->drawCircle(centerX, centerY, touching ? 14 : 12, true, outline);
-        renderer->drawCircle(centerX, centerY, touching ? 10 : 8, true, fill);
+        renderer->drawCircle(centerX, centerY, isTouching ? 14 : 12, true, outline);
+        renderer->drawCircle(centerX, centerY, isTouching ? 10 : 8, true, fill);
         renderer->drawCircle(centerX, centerY, 2, true, center);
     }
 
     void layout(u16, u16, u16, u16) override {
-        setBoundaries(0, 0, kCursorFramebufferSize, kCursorFramebufferSize);
+        setBoundaries(0, 0, kCursorFramebufferWidth, kCursorFramebufferHeight);
     }
 
     tsl::elm::Element* requestFocus(tsl::elm::Element*, tsl::FocusDirection) override {
@@ -67,12 +81,12 @@ public:
     }
 
     float localCursorX() const {
-        return ((cursorX * kCompositorScale) -
+        return ((cursorX.load(std::memory_order_acquire) * kCompositorScale) -
                 static_cast<float>(tsl::cfg::LayerPosX)) / kCompositorScale;
     }
 
     float localCursorY() const {
-        return ((cursorY * kCompositorScale) -
+        return ((cursorY.load(std::memory_order_acquire) * kCompositorScale) -
                 static_cast<float>(tsl::cfg::LayerPosY)) / kCompositorScale;
     }
 };
@@ -96,27 +110,40 @@ public:
     bool handleInput(u64 keysDown, u64 keysHeld, const HidTouchState&,
                      HidAnalogStickState leftStick,
                      HidAnalogStickState rightStick) override {
-        const auto stick = chooseStick(leftStick, rightStick);
-        moveCursor(stick);
+        const u64 pressed = keysDown | keysHeld;
 
-        if (keysDown & HidNpadButton_X) {
-            m_cursor->cursorX = kTouchWidth / 2.0F;
-            m_cursor->cursorY = kTouchHeight / 2.0F;
-        }
-
-        const bool dragRequested = (keysDown | keysHeld) & HidNpadButton_ZR;
-        const bool tapRequested = (keysDown | keysHeld) & HidNpadButton_A;
-        const bool shouldTouch = dragRequested || tapRequested;
-
-        if (shouldTouch) {
-            sendTouch();
-        } else if (m_cursor->touching) {
+        // An overlay owns the Tesla process while it is open. Treat the user's
+        // normal Tesla combo as a clean exit so nx-ovlloader can immediately
+        // chainload the menu again, without changing its saved keybind.
+        if ((pressed & kTeslaMenuCombo) == kTeslaMenuCombo &&
+            (keysDown & kTeslaMenuCombo) != 0) {
             releaseTouch();
+            tsl::Overlay::get()->close(true);
+            return true;
         }
 
         if (keysDown & HidNpadButton_B) {
             releaseTouch();
-            tsl::Overlay::get()->close();
+            tsl::Overlay::get()->close(true);
+            return true;
+        }
+
+        const auto stick = chooseStick(leftStick, rightStick);
+        moveCursor(stick);
+
+        if (keysDown & HidNpadButton_X) {
+            m_cursor->cursorX.store(kTouchWidth / 2.0F, std::memory_order_release);
+            m_cursor->cursorY.store(kTouchHeight / 2.0F, std::memory_order_release);
+        }
+
+        const bool dragRequested = pressed & HidNpadButton_ZR;
+        const bool tapRequested = pressed & HidNpadButton_A;
+        const bool shouldTouch = dragRequested || tapRequested;
+
+        if (shouldTouch) {
+            sendTouch();
+        } else if (m_cursor->touching.load(std::memory_order_acquire)) {
+            releaseTouch();
         }
 
         return true;
@@ -151,11 +178,14 @@ private:
         x /= magnitude;
         y /= magnitude;
 
-        m_cursor->cursorX = std::clamp(m_cursor->cursorX + (x * speed),
-                                       0.0F, static_cast<float>(kTouchWidth - 1));
-        m_cursor->cursorY = std::clamp(m_cursor->cursorY - (y * speed),
-                                       0.0F, static_cast<float>(kTouchHeight - 1));
-
+        const float oldX = m_cursor->cursorX.load(std::memory_order_acquire);
+        const float oldY = m_cursor->cursorY.load(std::memory_order_acquire);
+        m_cursor->cursorX.store(
+            std::clamp(oldX + (x * speed), 0.0F, static_cast<float>(kTouchWidth - 1)),
+            std::memory_order_release);
+        m_cursor->cursorY.store(
+            std::clamp(oldY - (y * speed), 0.0F, static_cast<float>(kTouchHeight - 1)),
+            std::memory_order_release);
     }
 
     void updateLayerPosition() {
@@ -164,17 +194,41 @@ private:
         }
 
         constexpr s32 layerWidth =
-            static_cast<s32>(kCursorFramebufferSize * kCompositorScale);
+            static_cast<s32>(kCursorFramebufferWidth * kCompositorScale);
         constexpr s32 layerHeight =
-            static_cast<s32>(kCursorFramebufferSize * kCompositorScale);
+            static_cast<s32>(kCursorFramebufferHeight * kCompositorScale);
         constexpr s32 halfWidth = layerWidth / 2;
         constexpr s32 halfHeight = layerHeight / 2;
-        const s32 targetX = static_cast<s32>(m_cursor->cursorX * kCompositorScale);
-        const s32 targetY = static_cast<s32>(m_cursor->cursorY * kCompositorScale);
+        const float cursorX = m_cursor->cursorX.load(std::memory_order_acquire);
+        const float cursorY = m_cursor->cursorY.load(std::memory_order_acquire);
+        const s32 targetX = static_cast<s32>(cursorX * kCompositorScale);
+        const s32 targetY = static_cast<s32>(cursorY * kCompositorScale);
         const s32 maxX = static_cast<s32>(tsl::cfg::ScreenWidth) - layerWidth;
         const s32 maxY = static_cast<s32>(tsl::cfg::ScreenHeight) - layerHeight;
-        const u32 layerX = static_cast<u32>(std::clamp(targetX - halfWidth, 0, maxX));
-        const u32 layerY = static_cast<u32>(std::clamp(targetY - halfHeight, 0, maxY));
+
+        u32 layerX = m_lastLayerX;
+        u32 layerY = m_lastLayerY;
+        if (layerX == std::numeric_limits<u32>::max()) {
+            layerX = static_cast<u32>(std::clamp(targetX - halfWidth, 0, maxX));
+        } else {
+            const float localX = ((cursorX * kCompositorScale) - layerX) /
+                                 kCompositorScale;
+            if (localX < kLayerPanMarginX ||
+                localX > kCursorFramebufferWidth - kLayerPanMarginX) {
+                layerX = static_cast<u32>(std::clamp(targetX - halfWidth, 0, maxX));
+            }
+        }
+
+        if (layerY == std::numeric_limits<u32>::max()) {
+            layerY = static_cast<u32>(std::clamp(targetY - halfHeight, 0, maxY));
+        } else {
+            const float localY = ((cursorY * kCompositorScale) - layerY) /
+                                 kCompositorScale;
+            if (localY < kLayerPanMarginY ||
+                localY > kCursorFramebufferHeight - kLayerPanMarginY) {
+                layerY = static_cast<u32>(std::clamp(targetY - halfHeight, 0, maxY));
+            }
+        }
 
         if (layerX != m_lastLayerX || layerY != m_lastLayerY) {
             tsl::gfx::Renderer::get().setLayerPos(layerX, layerY);
@@ -184,25 +238,33 @@ private:
     }
 
     void sendTouch() {
-        if (!g_hiddbgReady || m_cursor == nullptr) {
+        if (!g_touchInjectionAvailable.load(std::memory_order_acquire) ||
+            m_cursor == nullptr) {
             return;
         }
 
         HidTouchState state{};
-        state.x = static_cast<u32>(m_cursor->cursorX);
-        state.y = static_cast<u32>(m_cursor->cursorY);
+        state.x = static_cast<u32>(m_cursor->cursorX.load(std::memory_order_acquire));
+        state.y = static_cast<u32>(m_cursor->cursorY.load(std::memory_order_acquire));
         state.diameter_x = kFingerDiameter;
         state.diameter_y = kFingerDiameter;
         state.delta_time = 16'666'667ULL;
 
+        std::scoped_lock lock(g_touchPilotMutex);
+        if (!g_hiddbgInitialized) {
+            return;
+        }
         if (R_SUCCEEDED(hiddbgSetTouchScreenAutoPilotState(&state, 1))) {
-            m_cursor->touching = true;
+            g_touchPilotActive = true;
+            m_cursor->touching.store(true, std::memory_order_release);
+        } else {
+            g_touchInjectionAvailable.store(false, std::memory_order_release);
         }
     }
 
     void releaseTouch() {
         if (m_cursor != nullptr) {
-            m_cursor->touching = false;
+            m_cursor->touching.store(false, std::memory_order_release);
         }
         releaseTouchPilot();
     }
@@ -211,19 +273,32 @@ private:
 class TouchCursorOverlay final : public tsl::Overlay {
 public:
     void initServices() override {
-        ult::DefaultFramebufferWidth = kCursorFramebufferSize;
-        ult::DefaultFramebufferHeight = kCursorFramebufferSize;
+        ult::DefaultFramebufferWidth = kCursorFramebufferWidth;
+        ult::DefaultFramebufferHeight = kCursorFramebufferHeight;
         ult::windowedLayerPixelPerfect = false;
 
-        g_hiddbgReady = R_SUCCEEDED(hiddbgInitialize());
+        std::scoped_lock lock(g_touchPilotMutex);
+        g_hiddbgInitialized = R_SUCCEEDED(hiddbgInitialize());
+        g_touchInjectionAvailable.store(g_hiddbgInitialized,
+                                        std::memory_order_release);
     }
 
     void exitServices() override {
-        if (g_hiddbgReady) {
-            releaseTouchPilot();
+        releaseTouchPilot();
+        std::scoped_lock lock(g_touchPilotMutex);
+        if (g_hiddbgInitialized) {
             hiddbgExit();
-            g_hiddbgReady = false;
+            g_hiddbgInitialized = false;
         }
+        g_touchInjectionAvailable.store(false, std::memory_order_release);
+    }
+
+    void onHide() override {
+        // The launch combo normally toggles the current overlay's visibility.
+        // This tool must instead release AutoPilot and exit so the menu can be
+        // chainloaded again and no hidden virtual finger remains pressed.
+        releaseTouchPilot();
+        close(true);
     }
 
     std::unique_ptr<tsl::Gui> loadInitialGui() override {

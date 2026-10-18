@@ -17,6 +17,7 @@ or a companion PC/phone application.
 | ZR | Hold and drag a virtual finger |
 | X | Recenter the cursor |
 | B | Release touch and close the overlay |
+| L + D-pad Down + Right Stick click | Release touch and return to the overlay menu |
 
 The cursor is cyan while hovering and orange while touching. A red crossed
 circle means that `hid:dbg` could not be initialized.
@@ -55,8 +56,12 @@ The output is `touch_cursor.ovl`.
 
 ## Design notes and limitations
 
-- The overlay uses a 96x96 transparent framebuffer that follows the pointer.
-  This avoids the memory cost of a full-screen double-buffered overlay.
+- The overlay uses a stable 960x540 transparent framebuffer and only pans it
+  when the cursor nears an edge. This prevents the constant VI-layer movement
+  that caused cursor flicker in v0.1.0 while staying below the memory cost of a
+  full 1280x720 double-buffered overlay.
+- Cursor position and touch state are atomic because input and rendering run on
+  separate threads.
 - Touch coordinates use the Switch's native 1280x720 touchscreen coordinate
   space and are independent of docked display resolution.
 - Ultrahand normally gives the active overlay exclusive physical controller
