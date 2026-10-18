@@ -16,6 +16,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Apply touch-cursor libultrahand hooks
+        run: git -C lib/libultrahand apply --unidiff-zero ../../patches/libultrahand-touch-cursor.patch
+
       - name: Build
         run: make -j$(nproc)
 

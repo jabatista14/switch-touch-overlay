@@ -56,16 +56,18 @@ The output is `touch_cursor.ovl`.
 
 ## Design notes and limitations
 
-- The overlay uses a stable 960x540 transparent framebuffer and only pans it
-  when the cursor nears an edge. This prevents the constant VI-layer movement
-  that caused cursor flicker in v0.1.0 while staying below the memory cost of a
-  full 1280x720 double-buffered overlay.
+- The overlay uses a 960x540 transparent framebuffer and only pans it when the
+  cursor nears an edge. Each framebuffer slot is cleared before redrawing the
+  cursor; without that clear, old positions remain as colored trails.
 - Cursor position and touch state are atomic because input and rendering run on
   separate threads.
 - Touch coordinates use the Switch's native 1280x720 touchscreen coordinate
   space and are independent of docked display resolution.
 - Ultrahand normally gives the active overlay exclusive physical controller
-  input. Only the synthesized touchscreen events are intended to reach the game.
+  input. This overlay opts out of Ultrahand's own touch handling so its virtual
+  finger cannot swallow A release or trigger an unintended hide.
+- Ultrahand's launch combo explicitly closes this overlay. Other hide events
+  only release the virtual finger, rather than terminating the process.
 - Some games sample touch at 30 Hz. If a very quick tap is missed, briefly hold A.
 - This first release needs real-hardware validation across firmware versions.
 

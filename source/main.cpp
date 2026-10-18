@@ -50,6 +50,9 @@ public:
     std::atomic<bool> touching{false};
 
     void draw(tsl::gfx::Renderer* renderer) override {
+        // libultrahand reuses both framebuffer slots. Clear the current slot
+        // before drawing, otherwise old cursor positions remain as trails.
+        renderer->clearScreen();
         const s32 centerX = static_cast<s32>(localCursorX());
         const s32 centerY = static_cast<s32>(localCursorY());
         const bool isTouching = touching.load(std::memory_order_acquire);
@@ -272,6 +275,16 @@ private:
 
 class TouchCursorOverlay final : public tsl::Overlay {
 public:
+    bool acceptsTouchInput() const override {
+        // Our synthetic finger must reach the underlying app, not be handled
+        // as a physical touch on this overlay's invisible GUI.
+        return false;
+    }
+
+    bool exitOnLaunchCombo() const override {
+        return true;
+    }
+
     void initServices() override {
         ult::DefaultFramebufferWidth = kCursorFramebufferWidth;
         ult::DefaultFramebufferHeight = kCursorFramebufferHeight;
@@ -294,11 +307,8 @@ public:
     }
 
     void onHide() override {
-        // The launch combo normally toggles the current overlay's visibility.
-        // This tool must instead release AutoPilot and exit so the menu can be
-        // chainloaded again and no hidden virtual finger remains pressed.
+        // HOME, power and other normal hide events must not terminate the tool.
         releaseTouchPilot();
-        close(true);
     }
 
     std::unique_ptr<tsl::Gui> loadInitialGui() override {

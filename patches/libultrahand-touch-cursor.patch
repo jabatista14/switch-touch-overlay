@@ -1,0 +1,29 @@
+diff --git a/libtesla/include/tesla.hpp b/libtesla/include/tesla.hpp
+--- a/libtesla/include/tesla.hpp
++++ b/libtesla/include/tesla.hpp
+@@ -13212,1 +13212,5 @@
+         virtual void onHide() {}
++
++        // Opt-in hooks for overlays which synthesize their own touch input.
++        virtual bool acceptsTouchInput() const { return true; }
++        virtual bool exitOnLaunchCombo() const { return false; }
+@@ -13595,3 +13599,6 @@
+         void handleInput(u64 keysDown, u64 keysHeld, bool touchDetected, const HidTouchState &touchPos, HidAnalogStickState joyStickPosLeft, HidAnalogStickState joyStickPosRight) {
++            if (!acceptsTouchInput())
++                touchDetected = false;
++
+             if (!ult::internalTouchReleased.load(std::memory_order_acquire) || ult::launchingOverlay.load(std::memory_order_acquire))
+                 return;
+@@ -15022,7 +15029,11 @@
+                         if (shData->overlayOpen) {
+                             if (!disableHiding) {
+                         #if IS_STATUS_MONITOR_DIRECTIVE
+                                 if (!isValidOverlayMode()) {  // only guard the hide
+                         #endif
+-                                    tsl::Overlay::get()->hide();
++                                    if (tsl::Overlay::get()->exitOnLaunchCombo()) {
++                                        tsl::Overlay::get()->close(true);
++                                    } else {
++                                        tsl::Overlay::get()->hide();
++                                    }
+                                     shData->overlayOpen = false;

@@ -51,6 +51,10 @@ close safely.
   fully reboot Atmosphere once.
 - If a red crossed circle remains visible, close with B and reboot. Persistent
   failure indicates that `hid:dbg` is unavailable or already in use.
+- The cursor turning orange confirms only that the touch-injection call
+  succeeded. It does not prove that the foreground software accepted a tap;
+  test on a screen that responds to touch and report the exact screen if it
+  still does nothing.
 
 This is an experimental accessibility overlay. Compilation can be verified on
 a PC, but final behavior must be validated on real Switch hardware.
