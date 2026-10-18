@@ -17,6 +17,9 @@ Test target: HOS 20.5.0, Atmosphere 1.11.1, Ultrahand Overlay 2.4.1.
    action; the cursor appears immediately.
 
 No Ultrahand configuration or global keybind file is installed or changed.
+While Touch Cursor is visible it shares input with the foreground software so
+virtual touches can be received. Physical stick and button input may also act
+on the foreground software; use B to close the overlay when finished.
 
 ## Controls
 

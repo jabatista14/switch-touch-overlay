@@ -31,8 +31,11 @@ circle means that `hid:dbg` could not be initialized.
 3. Press **B** to release any active touch, disable injection, and close.
 
 The overlay does not install or modify any Ultrahand global keybind. It uses
-your existing Ultrahand activation combo and consumes its controls only while
-Touch Cursor is open. See [INSTALL.md](INSTALL.md) for the full SD-card guide.
+your existing Ultrahand activation combo. To let the underlying application
+receive virtual touches, it shares controller input with that application
+while Touch Cursor is open. Thus sticks and buttons may also affect the game;
+close the overlay with B when finished. See [INSTALL.md](INSTALL.md) for the
+full SD-card guide.
 
 Use a current Atmosphere, Ultrahand Overlay, nx-ovlloader, and libnx-compatible
 firmware combination. Do not run sys-botbase or another program that controls
@@ -64,8 +67,11 @@ The output is `touch_cursor.ovl`.
 - Touch coordinates use the Switch's native 1280x720 touchscreen coordinate
   space and are independent of docked display resolution.
 - Ultrahand normally gives the active overlay exclusive physical controller
-  input. This overlay opts out of Ultrahand's own touch handling so its virtual
-  finger cannot swallow A release or trigger an unintended hide.
+  input, which also suppresses input for the foreground application. This
+  overlay restores shared input on show so the application can see injected
+  touches. Physical button presses may also reach the application. It opts
+  out of Ultrahand's own touch handling so its virtual finger cannot swallow
+  A release or trigger an unintended hide.
 - Ultrahand's launch combo explicitly closes this overlay. Other hide events
   only release the virtual finger, rather than terminating the process.
 - Some games sample touch at 30 Hz. If a very quick tap is missed, briefly hold A.

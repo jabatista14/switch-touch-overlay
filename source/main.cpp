@@ -259,6 +259,9 @@ private:
         if (!g_hiddbgInitialized) {
             return;
         }
+        // A zero-initialized state describes only continuation. Some targets
+        // require the first sample to carry the finger-down transition.
+        state.attributes = g_touchPilotActive ? 0 : HidTouchAttribute_Start;
         if (R_SUCCEEDED(hiddbgSetTouchScreenAutoPilotState(&state, 1))) {
             g_touchPilotActive = true;
             m_cursor->touching.store(true, std::memory_order_release);
@@ -285,6 +288,16 @@ public:
 
     bool exitOnLaunchCombo() const override {
         return true;
+    }
+
+    void onShow() override {
+        // libultrahand normally disables HID input for the foreground title
+        // while an overlay is visible. That also prevents the title from
+        // observing our synthetic touchscreen samples. Restore shared input
+        // after libultrahand claims focus, and cancel its reassertion burst.
+        // Controller buttons will consequently also reach the title while
+        // Touch Cursor is open; no global button mapping is modified.
+        hlp::requestForeground(false);
     }
 
     void initServices() override {
