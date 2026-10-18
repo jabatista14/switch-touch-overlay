@@ -23,13 +23,23 @@ circle means that `hid:dbg` could not be initialized.
 
 ## Install
 
-1. Build `touch_cursor.ovl`, or download it from a release made from this source.
-2. Copy it to `sd:/switch/.overlays/touch_cursor.ovl`.
-3. Open Ultrahand over the game and select **Touch Cursor**.
+1. Extract the release ZIP to the root of the SD card, or copy
+   `touch_cursor.ovl` to `sd:/switch/.overlays/touch_cursor.ovl`.
+2. Open Ultrahand over the game and select **Touch Cursor**. This enables touch
+   injection immediately.
+3. Press **B** to release any active touch, disable injection, and close.
+
+The overlay does not install or modify any Ultrahand global keybind. It uses
+your existing Ultrahand activation combo and consumes its controls only while
+Touch Cursor is open. See [INSTALL.md](INSTALL.md) for the full SD-card guide.
 
 Use a current Atmosphere, Ultrahand Overlay, nx-ovlloader, and libnx-compatible
 firmware combination. Do not run sys-botbase or another program that controls
 touchscreen AutoPilot at the same time.
+
+The release build targets the user's HOS 20.5.0 / Atmosphere 1.11.1 /
+Ultrahand 2.4.1 setup. libultrahand is linked into the `.ovl`, so the overlay
+does not depend on a matching libultrahand DLL or runtime on the SD card.
 
 ## Build
 

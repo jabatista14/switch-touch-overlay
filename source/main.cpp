@@ -4,12 +4,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace {
 
 constexpr u32 kTouchWidth = 1280;
 constexpr u32 kTouchHeight = 720;
 constexpr u16 kCursorFramebufferSize = 96;
+constexpr float kCompositorScale = 1.5F;
 constexpr float kDeadzone = 0.16F;
 constexpr float kPixelsPerFrame = 13.0F;
 constexpr u32 kFingerDiameter = 24;
@@ -65,11 +67,13 @@ public:
     }
 
     float localCursorX() const {
-        return ((cursorX * 1.5F) - static_cast<float>(tsl::cfg::LayerPosX)) / 1.5F;
+        return ((cursorX * kCompositorScale) -
+                static_cast<float>(tsl::cfg::LayerPosX)) / kCompositorScale;
     }
 
     float localCursorY() const {
-        return ((cursorY * 1.5F) - static_cast<float>(tsl::cfg::LayerPosY)) / 1.5F;
+        return ((cursorY * kCompositorScale) -
+                static_cast<float>(tsl::cfg::LayerPosY)) / kCompositorScale;
     }
 };
 
@@ -120,6 +124,8 @@ public:
 
 private:
     CursorElement* m_cursor = nullptr;
+    u32 m_lastLayerX = std::numeric_limits<u32>::max();
+    u32 m_lastLayerY = std::numeric_limits<u32>::max();
 
     static HidAnalogStickState chooseStick(HidAnalogStickState left,
                                             HidAnalogStickState right) {
@@ -150,28 +156,31 @@ private:
         m_cursor->cursorY = std::clamp(m_cursor->cursorY - (y * speed),
                                        0.0F, static_cast<float>(kTouchHeight - 1));
 
-        if (m_cursor->touching) {
-            sendTouch();
-        }
     }
 
-    void updateLayerPosition() const {
+    void updateLayerPosition() {
         if (m_cursor == nullptr) {
             return;
         }
 
-        constexpr s32 layerWidth = static_cast<s32>(kCursorFramebufferSize * 1.5F);
-        constexpr s32 layerHeight = static_cast<s32>(kCursorFramebufferSize * 1.5F);
+        constexpr s32 layerWidth =
+            static_cast<s32>(kCursorFramebufferSize * kCompositorScale);
+        constexpr s32 layerHeight =
+            static_cast<s32>(kCursorFramebufferSize * kCompositorScale);
         constexpr s32 halfWidth = layerWidth / 2;
         constexpr s32 halfHeight = layerHeight / 2;
-        const s32 targetX = static_cast<s32>(m_cursor->cursorX * 1.5F);
-        const s32 targetY = static_cast<s32>(m_cursor->cursorY * 1.5F);
+        const s32 targetX = static_cast<s32>(m_cursor->cursorX * kCompositorScale);
+        const s32 targetY = static_cast<s32>(m_cursor->cursorY * kCompositorScale);
         const s32 maxX = static_cast<s32>(tsl::cfg::ScreenWidth) - layerWidth;
         const s32 maxY = static_cast<s32>(tsl::cfg::ScreenHeight) - layerHeight;
         const u32 layerX = static_cast<u32>(std::clamp(targetX - halfWidth, 0, maxX));
         const u32 layerY = static_cast<u32>(std::clamp(targetY - halfHeight, 0, maxY));
 
-        tsl::gfx::Renderer::get().setLayerPos(layerX, layerY);
+        if (layerX != m_lastLayerX || layerY != m_lastLayerY) {
+            tsl::gfx::Renderer::get().setLayerPos(layerX, layerY);
+            m_lastLayerX = layerX;
+            m_lastLayerY = layerY;
+        }
     }
 
     void sendTouch() {
