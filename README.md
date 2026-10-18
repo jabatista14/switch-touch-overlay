@@ -20,7 +20,8 @@ or a companion PC/phone application.
 | L + D-pad Down + Right Stick click | Release touch and return to the overlay menu |
 
 The cursor is cyan while hovering and orange while touching. A red crossed
-circle means that `hid:dbg` could not be initialized.
+circle means that `hid:dbg` could not be initialized. A yellow outer ring
+means the Switch rejected the pad-only input filter.
 
 ## Install
 
@@ -31,11 +32,11 @@ circle means that `hid:dbg` could not be initialized.
 3. Press **B** to release any active touch, disable injection, and close.
 
 The overlay does not install or modify any Ultrahand global keybind. It uses
-your existing Ultrahand activation combo. To let the underlying application
-receive virtual touches, it shares controller input with that application
-while Touch Cursor is open. Thus sticks and buttons may also affect the game;
-close the overlay with B when finished. See [INSTALL.md](INSTALL.md) for the
-full SD-card guide.
+your existing Ultrahand activation combo. While Touch Cursor is visible, HOS
+14+ gets a pad-only input filter for the foreground applets and application:
+the overlay still reads the controller, but the underlying interface should
+receive only the virtual touch. Normal pad input is restored on hide or exit.
+See [INSTALL.md](INSTALL.md) for the full SD-card guide.
 
 Use a current Atmosphere, Ultrahand Overlay, nx-ovlloader, and libnx-compatible
 firmware combination. Do not run sys-botbase or another program that controls
@@ -68,10 +69,13 @@ The output is `touch_cursor.ovl`.
   space and are independent of docked display resolution.
 - Ultrahand normally gives the active overlay exclusive physical controller
   input, which also suppresses input for the foreground application. This
-  overlay restores shared input on show so the application can see injected
-  touches. Physical button presses may also reach the application. It opts
-  out of Ultrahand's own touch handling so its virtual finger cannot swallow
-  A release or trigger an unintended hide.
+  overlay restores general HID access so the application can see injected
+  touches, then uses HOS 14+ `hid:sys` pad-input gating to block its ordinary
+  controller navigation. It reasserts the gate every half second to cover
+  focus changes, and restores previously gated ARUIDs on hide or exit. If
+  that service rejects a request, a yellow warning ring appears and buttons
+  may still reach the application. It opts out of Ultrahand's own touch
+  handling so its virtual finger cannot swallow A release or trigger a hide.
 - Ultrahand's launch combo explicitly closes this overlay. Other hide events
   only release the virtual finger, rather than terminating the process.
 - Some games sample touch at 30 Hz. If a very quick tap is missed, briefly hold A.

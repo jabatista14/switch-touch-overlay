@@ -44,7 +44,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 #---------------------------------------------------------------------------------
 APP_TITLE	:= Touch Cursor
 APP_AUTHOR	:= Jackson
-APP_VERSION	:= 0.1.3
+APP_VERSION	:= 0.1.4
 TARGET	    := touch_cursor
 BUILD	    := build
 SOURCES	    := source 

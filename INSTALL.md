@@ -17,9 +17,9 @@ Test target: HOS 20.5.0, Atmosphere 1.11.1, Ultrahand Overlay 2.4.1.
    action; the cursor appears immediately.
 
 No Ultrahand configuration or global keybind file is installed or changed.
-While Touch Cursor is visible it shares input with the foreground software so
-virtual touches can be received. Physical stick and button input may also act
-on the foreground software; use B to close the overlay when finished.
+While Touch Cursor is visible it leaves touch input enabled for the foreground
+software but gates normal controller input on HOS 14+. The controller continues
+to drive only the overlay; normal input is restored when it hides or exits.
 
 ## Controls
 
@@ -34,7 +34,8 @@ on the foreground software; use B to close the overlay when finished.
 
 The cursor is cyan while hovering and orange while a virtual finger is down.
 A red crossed circle means the Switch rejected access to `hid:dbg`; press B to
-close safely.
+close safely. A yellow outer ring means pad-only filtering failed; in that case
+buttons may still navigate the underlying interface.
 
 ## Disable or uninstall
 

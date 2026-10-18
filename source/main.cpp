@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <mutex>
+#include <vector>
 
 namespace {
 
@@ -26,6 +27,90 @@ std::mutex g_touchPilotMutex;
 bool g_hiddbgInitialized = false;
 bool g_touchPilotActive = false;
 std::atomic<bool> g_touchInjectionAvailable{false};
+std::atomic<bool> g_padFilterFailed{false};
+
+// HOS 14+ exposes separate pad and touchscreen input gates. Keep the
+// underlying app's general HID permission enabled for AutoPilot touch, but
+// close only its pad gate while this overlay is visible. The overlay itself
+// uses ARUID 0 and is intentionally never added to this list.
+Result setAppletPadInputEnabled(bool enabled, u64 aruid) {
+    const struct {
+        u8 enabled;
+        u64 aruid;
+    } in = {static_cast<u8>(enabled), aruid};
+    static_assert(sizeof(in) == 16);
+    return serviceDispatchIn(hidsysGetServiceSession(), 506, in);
+}
+
+class ForegroundPadFilter final {
+public:
+    void activate() {
+        m_active = true;
+        m_lastRefreshNs = 0;
+        g_padFilterFailed.store(!hosversionAtLeast(14, 0, 0),
+                                std::memory_order_release);
+        refresh();
+    }
+
+    void refresh() {
+        if (!m_active || !hosversionAtLeast(14, 0, 0)) {
+            return;
+        }
+
+        const u64 nowNs = armTicksToNs(armGetSystemTick());
+        if (m_lastRefreshNs != 0 &&
+            nowNs - m_lastRefreshNs < 500'000'000ULL) {
+            return;
+        }
+        m_lastRefreshNs = nowNs;
+
+        for (u64 programId = 0x0100000000001000ULL;
+             programId < 0x0100000000001020ULL; ++programId) {
+            u64 aruid = 0;
+            if (R_SUCCEEDED(pmdmntGetProcessId(&aruid, programId))) {
+                block(aruid);
+            }
+        }
+
+        u64 applicationAruid = 0;
+        if (R_SUCCEEDED(pmdmntGetApplicationProcessId(&applicationAruid))) {
+            block(applicationAruid);
+        }
+    }
+
+    void deactivate() {
+        m_active = false;
+        m_lastRefreshNs = 0;
+        for (auto it = m_blockedAruids.begin(); it != m_blockedAruids.end();) {
+            if (R_SUCCEEDED(setAppletPadInputEnabled(true, *it))) {
+                it = m_blockedAruids.erase(it);
+            } else {
+                ++it; // Retry in exitServices if an applet was temporarily busy.
+            }
+        }
+    }
+
+private:
+    void block(u64 aruid) {
+        if (aruid == 0) {
+            return;
+        }
+        if (R_SUCCEEDED(setAppletPadInputEnabled(false, aruid))) {
+            if (std::find(m_blockedAruids.begin(), m_blockedAruids.end(), aruid) ==
+                m_blockedAruids.end()) {
+                m_blockedAruids.push_back(aruid);
+            }
+        } else {
+            g_padFilterFailed.store(true, std::memory_order_release);
+        }
+    }
+
+    bool m_active = false;
+    u64 m_lastRefreshNs = 0;
+    std::vector<u64> m_blockedAruids;
+};
+
+ForegroundPadFilter g_padFilter;
 
 void releaseTouchPilot() {
     std::scoped_lock lock(g_touchPilotMutex);
@@ -70,6 +155,11 @@ public:
             : tsl::Color{0x2, 0xD, 0xF, 0xF});
         const auto center = renderer->a(tsl::Color{0xF, 0xF, 0xF, 0xF});
 
+        if (g_padFilterFailed.load(std::memory_order_acquire)) {
+            const auto warning = renderer->a(tsl::Color{0xF, 0xC, 0x0, 0xF});
+            renderer->drawCircle(centerX, centerY, 18, false, warning);
+        }
+
         renderer->drawCircle(centerX, centerY, isTouching ? 14 : 12, true, outline);
         renderer->drawCircle(centerX, centerY, isTouching ? 10 : 8, true, fill);
         renderer->drawCircle(centerX, centerY, 2, true, center);
@@ -107,6 +197,7 @@ public:
     }
 
     void update() override {
+        g_padFilter.refresh();
         updateLayerPosition();
     }
 
@@ -295,9 +386,10 @@ public:
         // while an overlay is visible. That also prevents the title from
         // observing our synthetic touchscreen samples. Restore shared input
         // after libultrahand claims focus, and cancel its reassertion burst.
-        // Controller buttons will consequently also reach the title while
-        // Touch Cursor is open; no global button mapping is modified.
+        // The per-applet pad gate then blocks physical controller input while
+        // leaving AutoPilot touch available to the foreground software.
         tsl::hlp::requestForeground(false);
+        g_padFilter.activate();
     }
 
     void initServices() override {
@@ -313,6 +405,7 @@ public:
 
     void exitServices() override {
         releaseTouchPilot();
+        g_padFilter.deactivate();
         std::scoped_lock lock(g_touchPilotMutex);
         if (g_hiddbgInitialized) {
             hiddbgExit();
@@ -324,6 +417,7 @@ public:
     void onHide() override {
         // HOME, power and other normal hide events must not terminate the tool.
         releaseTouchPilot();
+        g_padFilter.deactivate();
     }
 
     std::unique_ptr<tsl::Gui> loadInitialGui() override {
