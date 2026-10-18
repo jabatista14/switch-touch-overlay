@@ -1,0 +1,44 @@
+name: Release overlay
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - name: Check out source and libultrahand
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Apply touch-cursor libultrahand hooks
+        run: git -C lib/libultrahand apply --unidiff-zero ../../patches/libultrahand-touch-cursor.patch
+
+      - name: Build
+        run: make -j$(nproc)
+
+      - name: Package SD-root archive
+        run: |
+          python3 scripts/package_release.py \
+            --overlay touch_cursor.ovl \
+            --install-guide INSTALL.md \
+            --license LICENSE \
+            --output TouchCursor-${GITHUB_REF_NAME}-SD.zip
+          sha256sum touch_cursor.ovl TouchCursor-${GITHUB_REF_NAME}-SD.zip
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Touch Cursor ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            touch_cursor.ovl
+            TouchCursor-${{ github.ref_name }}-SD.zip
+          fail_on_unmatched_files: true
