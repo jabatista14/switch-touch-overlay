@@ -1,17 +1,6 @@
 ##################################################################################
-# Makefile for Tetris Overlay
-# Author: ppkantorski
-# Description:
-#   This Makefile is used to build the Tetris Overlay homebrew application for
-#   Nintendo Switch.
-#
-#   For more details and usage instructions, please refer to the project's
-#   documentation and README.md.
-#
-#   GitHub Repository: https://github.com/ppkantorski/Tetris-Overlay
-#
-# Licensed under GPLv2
-# Copyright (c) 2024-2026 ppkantorski
+# Makefile for Touch Cursor Overlay
+# Based on the Tetris Overlay/libultrahand project structure.
 ##################################################################################
 
 #---------------------------------------------------------------------------------
@@ -53,10 +42,10 @@ include $(DEVKITPRO)/libnx/switch_rules
 #   of a homebrew executable (.nro). This is intended to be used for sysmodules.
 #   NACP building is skipped as well. #lib/Atmosphere-libs/libexosphere/source/pmic
 #---------------------------------------------------------------------------------
-APP_TITLE	:= Tetris
-APP_AUTHOR	:= ppkantorski
-APP_VERSION	:= 0.5.2
-TARGET	    := tetris
+APP_TITLE	:= Touch Cursor
+APP_AUTHOR	:= Jackson
+APP_VERSION	:= 0.1.0
+TARGET	    := touch_cursor
 BUILD	    := build
 SOURCES	    := source 
 INCLUDES	:= source include
@@ -78,24 +67,10 @@ CFLAGS := -g -Wall -O3 -ffunction-sections -fdata-sections -flto \
 CFLAGS += $(INCLUDE) -D__SWITCH__ -DAPP_VERSION="\"$(APP_VERSION)\"" -D_FORTIFY_SOURCE=2
 
 # Enable appearance overriding
-UI_OVERRIDE_PATH := /config/tetris/
+UI_OVERRIDE_PATH := /config/touch_cursor/
 CFLAGS += -DUI_OVERRIDE_PATH="\"$(UI_OVERRIDE_PATH)\""
 
-# Enable Widget
-CFLAGS += -DUSING_WIDGET_DIRECTIVE=1
-
-# Enable Widget
-CFLAGS += -DNO_BACK_KEY_DIRECTIVE=1
-
-# Exception wrap utilization (for smaller compilation size)
-CFLAGS += -DUSE_EXCEPTION_WRAP=1
-
-# Requires USE_EXCEPTION_WRAP and inclusion of exception_wrap.hpp in main
-LDFLAGS += -Wl,-wrap,__cxa_throw \
-           -Wl,-wrap,_Unwind_Resume \
-           -Wl,-wrap,__gxx_personality_v0
-
-CXXFLAGS := $(CFLAGS) -std=c++26 -Wno-dangling-else -ffast-math -fno-unwind-tables -fno-asynchronous-unwind-tables
+CXXFLAGS := $(CFLAGS) -std=gnu++20 -Wno-dangling-else -ffast-math -fno-unwind-tables -fno-asynchronous-unwind-tables
 
 ASFLAGS := $(ARCH)
 LDFLAGS += -specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -Wl,-Map,$(notdir $*.map)
