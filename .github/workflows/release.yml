@@ -38,6 +38,7 @@ jobs:
         with:
           name: Touch Cursor ${{ github.ref_name }}
           body_path: RELEASE_NOTES.md
+          prerelease: true
           files: |
             touch_cursor.ovl
             TouchCursor-${{ github.ref_name }}-SD.zip
