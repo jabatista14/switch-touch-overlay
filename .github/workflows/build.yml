@@ -16,9 +16,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install port libraries
-        run: dkp-pacman -Syu --noconfirm switch-curl switch-zlib switch-mbedtls
-
       - name: Build
         run: make -j$(nproc)
 
